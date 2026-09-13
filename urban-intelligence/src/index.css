@@ -1,0 +1,314 @@
+@import "tailwindcss";
+
+@theme {
+  --color-navy-900: #0a0f1a;
+  --color-navy-800: #111827;
+  --color-navy-700: #1a2332;
+  --color-navy-600: #233044;
+  --color-navy-500: #2d3f5a;
+  --color-navy-400: #3b5475;
+  --color-navy-300: #4a6b8f;
+  
+  --color-cyan-400: #22d3ee;
+  --color-cyan-500: #06b6d4;
+  --color-cyan-600: #0891b2;
+  
+  --color-emerald-400: #34d399;
+  --color-emerald-500: #10b981;
+  --color-emerald-600: #059669;
+  
+  --color-amber-400: #fbbf24;
+  --color-amber-500: #f59e0b;
+  --color-amber-600: #d97706;
+  
+  --color-rose-400: #fb7185;
+  --color-rose-500: #ef4444;
+  --color-rose-600: #dc2626;
+  
+  --color-blue-400: #60a5fa;
+  --color-blue-500: #3b82f6;
+  --color-blue-600: #2563eb;
+  
+  --color-indigo-400: #a5b4fc;
+  --color-indigo-500: #818cf8;
+  --color-indigo-600: #6366f1;
+  
+  --color-purple-400: #c084fc;
+  --color-purple-500: #a855f7;
+  --color-purple-600: #9333ea;
+  
+  --color-green-400: #4ade80;
+  --color-green-500: #22c55e;
+  --color-green-600: #16a34a;
+  
+  --font-mono: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+  --font-sans: 'Inter', system-ui, sans-serif;
+  
+  --animate-pulse-slow: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --animate-blink: blink 1s step-end infinite;
+  --animate-slide-up: slideUp 0.3s ease-out;
+  --animate-fade-in: fadeIn 0.2s ease-out;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+@keyframes slideUp {
+  0% { transform: translateY(10px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes fadeIn {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@layer base {
+  * {
+    border-color: var(--color-navy-600);
+  }
+
+  body {
+    background-color: var(--color-navy-900);
+    color: white;
+    font-family: var(--font-sans);
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background-color: var(--color-navy-900);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--color-navy-600);
+    border-radius: 9999px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--color-navy-500);
+  }
+
+  *:focus-visible {
+    outline: none;
+    ring: 2px solid var(--color-cyan-500);
+    ring-offset: 2px;
+    ring-offset-color: var(--color-navy-900);
+  }
+
+  ::selection {
+    background-color: color-mix(in srgb, var(--color-cyan-500) 30%, transparent);
+    color: white;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    padding: 0.5rem 1rem;
+    background-color: color-mix(in srgb, var(--color-cyan-500) 20%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-cyan-500) 30%, transparent);
+    color: var(--color-cyan-400);
+    border-radius: 0.375rem;
+    font-weight: 500;
+    font-size: 0.875rem;
+    transition-property: background-color, border-color, color;
+    transition-duration: 150ms;
+  }
+  
+  .btn-primary:hover {
+    background-color: color-mix(in srgb, var(--color-cyan-500) 30%, transparent);
+  }
+
+  .btn-secondary {
+    padding: 0.5rem 1rem;
+    background-color: var(--color-navy-700);
+    border: 1px solid var(--color-navy-600);
+    color: white;
+    border-radius: 0.375rem;
+    font-weight: 500;
+    font-size: 0.875rem;
+    transition-property: background-color, border-color;
+    transition-duration: 150ms;
+  }
+  
+  .btn-secondary:hover {
+    background-color: var(--color-navy-600);
+  }
+
+  .btn-danger {
+    padding: 0.5rem 1rem;
+    background-color: color-mix(in srgb, var(--color-rose-500) 20%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-rose-500) 30%, transparent);
+    color: var(--color-rose-400);
+    border-radius: 0.375rem;
+    font-weight: 500;
+    font-size: 0.875rem;
+    transition-property: background-color, border-color, color;
+    transition-duration: 150ms;
+  }
+  
+  .btn-danger:hover {
+    background-color: color-mix(in srgb, var(--color-rose-500) 30%, transparent);
+  }
+
+  .panel {
+    background-color: color-mix(in srgb, var(--color-navy-800) 50%, transparent);
+    border: 1px solid var(--color-navy-600);
+    border-radius: 0.5rem;
+  }
+
+  .status-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 9999px;
+  }
+
+  .status-dot-live {
+    background-color: var(--color-emerald-400);
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  .status-dot-warning {
+    background-color: var(--color-amber-400);
+    animation: blink 1s step-end infinite;
+  }
+
+  .status-dot-offline {
+    background-color: var(--color-rose-400);
+  }
+
+  .metric-card {
+    background-color: color-mix(in srgb, var(--color-navy-900) 50%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-navy-600) 50%, transparent);
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+    transition-property: border-color;
+    transition-duration: 150ms;
+  }
+  
+  .metric-card:hover {
+    border-color: var(--color-navy-500);
+  }
+
+  .font-mono-sm {
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+  }
+
+  .font-mono-xs {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+  }
+
+  .text-tabular {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer utilities {
+  .animate-ping-slow {
+    animation: ping 3s cubic-bezier(0, 0, 0.2, 1) infinite;
+  }
+
+  @keyframes ping {
+    75%, 100% {
+      transform: scale(2);
+      opacity: 0;
+    }
+  }
+
+  .glass {
+    background-color: color-mix(in srgb, var(--color-navy-900) 80%, transparent);
+    backdrop-filter: blur(4px);
+    border: 1px solid color-mix(in srgb, var(--color-navy-600) 50%, transparent);
+  }
+
+  .text-gradient-cyan {
+    background: linear-gradient(to right, var(--color-cyan-400), var(--color-blue-400));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+}
+
+/* Leaflet overrides */
+.leaflet-container {
+  background-color: var(--color-navy-900) !important;
+  font-family: var(--font-sans) !important;
+}
+
+.leaflet-control-zoom {
+  border: none !important;
+}
+
+.leaflet-control-zoom a {
+  background-color: color-mix(in srgb, var(--color-navy-800) 90%, transparent) !important;
+  border: 1px solid var(--color-navy-600) !important;
+  color: var(--color-cyan-400) !important;
+  width: 36px !important;
+  height: 36px !important;
+  line-height: 36px !important;
+  font-size: 18px !important;
+}
+
+.leaflet-control-zoom a:hover {
+  background-color: var(--color-navy-700) !important;
+}
+
+.leaflet-control-zoom a:first-child {
+  border-radius: 0.5rem 0.5rem 0 0 !important;
+}
+
+.leaflet-control-zoom a:last-child {
+  border-radius: 0 0 0.5rem 0.5rem !important;
+}
+
+.leaflet-popup-content-wrapper {
+  background-color: var(--color-navy-900) !important;
+  border: 1px solid var(--color-navy-600) !important;
+  border-radius: 0.5rem !important;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -2px rgba(0, 0, 0, 0.25) !important;
+}
+
+.leaflet-popup-content {
+  color: white !important;
+  font-size: 0.875rem !important;
+  margin: 12px !important;
+}
+
+.leaflet-popup-tip {
+  background-color: var(--color-navy-900) !important;
+}
+
+.leaflet-container a.leaflet-popup-close-button {
+  color: var(--color-navy-400) !important;
+}
+
+.leaflet-container a.leaflet-popup-close-button:hover {
+  color: white !important;
+}
+
+video {
+  user-select: none;
+}
+
+button, select, input {
+  user-select: none;
+}
+
+input[type="text"], input[type="number"], textarea {
+  user-select: text;
+}
