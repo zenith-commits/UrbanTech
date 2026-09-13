@@ -1,32 +1,39 @@
-# React + TypeScript + Vite
+# UrbanTech — Mobile Urban Intelligence Platform
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+> **Turning everyday public-transport buses into mobile urban intelligence units.**
 
-Currently, two official plugins are available:
+UrbanTech is a Smart India Hackathon 2026 prototype for an **AI-powered mobile urban intelligence platform using public transport fleets**.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+The idea is simple:
 
-## React Compiler
+**A bus moves through the city → cameras observe the road → AI detects relevant objects and hazards → GPS provides location context → events are visualized on a live GIS dashboard → authorities can verify and act on them.**
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+The prototype brings together:
 
-## Expanding the Oxlint configuration
+- 🛰️ GPS-based location context
+- 📹 Live browser webcam
+- 🤖 Frontend AI/detection simulation
+- 🗺️ Interactive GIS map
+- 🚨 Urban hazard/event alerts
+- 🚌 Fleet monitoring
+- 📊 Urban intelligence analytics
+- ✅ Event verification and maintenance actions
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+---
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
-```
+## Problem
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Cities have large amounts of public-transport vehicles moving continuously through roads, but most buses are not used as a distributed sensing network.
+
+UrbanTech explores how existing bus cameras and GPS systems can become a continuously moving source of urban intelligence.
+
+The platform is designed around four stages:
+
+```text
+SENSE
+  ↓
+ANALYSE
+  ↓
+SHARE
+  ↓
+ACT

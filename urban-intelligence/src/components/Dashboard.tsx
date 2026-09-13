@@ -1,9 +1,11 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import type { Bus, GPSPosition, UrbanEvent, Detection, KPIMetrics, SystemStatus, ComponentStatusLabel } from '../types';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import type { Bus, UrbanEvent, Detection, KPIMetrics, SystemStatus, ComponentStatusLabel } from '../types';
 import { useWebcam } from '../hooks/useWebcam';
 import { useGeolocation } from '../hooks/useGeolocation';
 import { useDetectionSimulation } from '../hooks/useDetectionSimulation';
+import { useObjectDetection } from '../hooks/useObjectDetection';
 import { useUrbanEvents } from '../hooks/useUrbanEvents';
+import { DetectionEventCoordinator, buildRealDetectionEvent, cooldownForClass } from '../inference/detectionEvents';
 import {
   generateMockBuses,
   generateInitialEvents,
@@ -15,6 +17,7 @@ import { Header } from './Header';
 import { KPIStrip } from './KPIStrip';
 import { LiveMap } from './LiveMap';
 import { WebcamPanel } from './WebcamPanel';
+import type { DetectionMode } from './WebcamPanel';
 import { EventFeed } from './EventFeed';
 import { EventDetails } from './EventDetails';
 import { NeedsAttention } from './NeedsAttention';
@@ -23,6 +26,11 @@ import { Analytics } from './Analytics';
 import { SystemStatusPanel } from './SystemStatusPanel';
 import { GPSStatus } from './GPSStatus';
 import { CameraStatus } from './CameraStatus';
+
+const isDev = import.meta.env.DEV;
+function devLog(...args: unknown[]) {
+  if (isDev) console.log('[AI]', ...args);
+}
 
 const DEFAULT_BUS_ID = 'BUS-01';
 
@@ -43,18 +51,22 @@ export function Dashboard() {
 
   const activeBus = buses.find(b => b.id === activeBusId) || buses[0] || null;
 
-  // --- Demo / simulation control ---
-  const [demoMode, setDemoMode] = useState(false);
+  // --- AI mode control ---
+  const [detectionMode, setDetectionMode] = useState<DetectionMode>('off');
   const [aiPaused, setAiPaused] = useState(false);
+  const [threshold, setThreshold] = useState(0.25);
   const [detectionsToday, setDetectionsToday] = useState(64);
 
   // --- Real webcam ---
   const {
-    stream,
     isActive: cameraActive,
     isLoading: cameraLoading,
+    videoReady: cameraVideoReady,
     error: cameraError,
     facingMode,
+    videoWidth,
+    videoHeight,
+    deviceLabel,
     startCamera,
     stopCamera,
     switchCamera,
@@ -88,8 +100,6 @@ export function Dashboard() {
     );
   }, [gpsPosition, activeBusId]);
 
-  const busPosition: GPSPosition | null = gpsPosition || activeBus?.position || null;
-
   // --- Shared event store (single source of truth for events / alerts) ---
   const initialEvents = useMemo(() => generateInitialEvents(buses), [buses]);
   const urban = useUrbanEvents(initialEvents);
@@ -97,8 +107,41 @@ export function Dashboard() {
   const { events, alerts, selectedEventId, selectEvent, verifyEvent, createMaintenanceAlert, dismissAlert, clearEvents } = urban;
   const selectedEvent: UrbanEvent | null = events.find(e => e.id === selectedEventId) || null;
 
+  // --- Real AI object detection (ONNX Runtime Web) ---
+  const coordinatorRef = useRef(new DetectionEventCoordinator());
+
+  const handleRealDetections = useCallback(
+    (dets: Detection[]) => {
+      if (dets.length === 0) return;
+      const sustained = coordinatorRef.current.update(dets);
+      const pos = gpsPosition || activeBus?.position || null;
+      if (!pos) return;
+      for (const det of sustained) {
+        const cd = cooldownForClass(det.className);
+        if (coordinatorRef.current.shouldEmit(det.className, cd)) {
+          const event = buildRealDetectionEvent(det, pos, activeBusId);
+          urban.addEvent(event);
+          setDetectionsToday(prev => prev + 1);
+          devLog('real event:', event.type, event.subtype, Math.round(event.confidence * 100) + '%');
+        }
+      }
+    },
+    [gpsPosition, activeBus, activeBusId, urban],
+  );
+
+  const realDetection = useObjectDetection({
+    active: detectionMode === 'real',
+    paused: detectionMode === 'real' && aiPaused,
+    videoRef,
+    threshold,
+    onDetections: handleRealDetections,
+    targetFps: 12,
+  });
+
+  devLog('real model:', realDetection.modelState, realDetection.backend ?? '...', 'loading:', realDetection.isLoading);
+
   // --- Frontend AI detection simulation over the real webcam ---
-  const simulateEnabled = cameraActive && demoMode && !aiPaused;
+  const simActive = detectionMode === 'demo' && cameraActive && !aiPaused;
 
   const handleDetectionFrame = useCallback(
     (dets: Detection[]) => {
@@ -117,10 +160,27 @@ export function Dashboard() {
         urban.addEvent(event);
       }
     },
-    [gpsPosition, activeBus, activeBusId, urban]
+    [gpsPosition, activeBus, activeBusId, urban],
   );
 
-  const simulation = useDetectionSimulation(simulateEnabled, 1600, handleDetectionFrame);
+  const simulation = useDetectionSimulation(simActive, 1600, handleDetectionFrame);
+
+  const activeDetections: Detection[] =
+    detectionMode === 'real' ? realDetection.detections : detectionMode === 'demo' ? simulation.detections : [];
+
+  // --- Mode selection handler: click to activate (auto-starts camera if needed) ---
+  const handleSetDetectionMode = useCallback(
+    (mode: DetectionMode) => {
+      setDetectionMode(prev => {
+        const next = prev === mode ? 'off' : mode;
+        if (next !== 'off' && !cameraActive) {
+          startCamera();
+        }
+        return next;
+      });
+    },
+    [cameraActive, startCamera],
+  );
 
   // --- Derived status ---
   const gpsStatus: 'CONNECTED' | 'DISCONNECTED' | 'CONNECTING' | 'ERROR' =
@@ -136,38 +196,69 @@ export function Dashboard() {
 
   const systemStatus = useMemo(
     () => getInitialSystemStatus(cameraActive, gpsWatching && !isUsingFallback),
-    [cameraActive, gpsWatching, isUsingFallback]
+    [cameraActive, gpsWatching, isUsingFallback],
   );
 
   const liveSystemStatus: SystemStatus = useMemo(() => {
-    const aiStatus: ComponentStatusLabel = simulateEnabled ? 'RUNNING' : 'DISCONNECTED';
-    const pipelineStatus: ComponentStatusLabel = simulateEnabled ? 'ACTIVE' : 'STANDBY';
-    const mapStatus: ComponentStatusLabel = simulateEnabled ? 'ACTIVE' : 'ONLINE';
+    const aiStatus: ComponentStatusLabel =
+      detectionMode === 'real'
+        ? realDetection.modelState === 'ready'
+          ? 'RUNNING'
+          : realDetection.modelState === 'loading'
+            ? 'CONNECTING'
+            : realDetection.modelState === 'error'
+              ? 'ERROR'
+              : 'DISCONNECTED'
+        : detectionMode === 'demo'
+          ? simActive
+            ? 'RUNNING'
+            : 'STANDBY'
+          : 'DISCONNECTED';
+
+    const aiDetails =
+      detectionMode === 'real'
+        ? realDetection.modelState === 'ready'
+          ? `${realDetection.backend?.toUpperCase() ?? '?'} BACKEND — MODEL LOADED`
+          : realDetection.modelState === 'loading'
+            ? 'ONNX Runtime loading model...'
+            : realDetection.modelError ?? 'Model not active'
+        : detectionMode === 'demo'
+          ? 'Frontend simulation active'
+          : 'Select DEMO AI or LIVE AI';
 
     return {
       ...systemStatus,
+      camera: {
+        ...systemStatus.camera,
+        status: cameraActive && cameraVideoReady ? 'CONNECTED' : cameraActive ? 'CONNECTING' : 'DISCONNECTED',
+        details: cameraActive && cameraVideoReady
+          ? `${videoWidth}x${videoHeight} stream`
+          : cameraActive
+            ? 'Waiting for video'
+            : 'Click START CAMERA',
+      },
       aiEngine: {
         ...systemStatus.aiEngine,
         status: aiStatus,
-        details: simulateEnabled
-          ? 'Frontend detection simulation active'
-          : 'Requires camera + demo mode',
+        details: aiDetails,
       },
       eventPipeline: {
         ...systemStatus.eventPipeline,
-        status: pipelineStatus,
+        status: detectionMode !== 'off' ? 'ACTIVE' : 'STANDBY',
         details: `${events.length} events processed`,
       },
       map: {
         ...systemStatus.map,
-        status: mapStatus,
       },
     };
-  }, [systemStatus, simulateEnabled, events.length]);
+  }, [
+    systemStatus, detectionMode, simActive, cameraActive, cameraVideoReady, videoWidth, videoHeight,
+    realDetection.modelState, realDetection.modelError, realDetection.backend, events.length,
+  ]);
 
   const kpis = useMemo(
     () => computeKPIs(events, detectionsToday, buses),
-    [events, detectionsToday, buses]
+    [events, detectionsToday, buses],
   );
 
   const analytics = useMemo(() => getInitialAnalytics(), []);
@@ -187,7 +278,7 @@ export function Dashboard() {
       setFocusedBusId(busId);
       selectEvent(null);
     },
-    [selectEvent]
+    [selectEvent],
   );
 
   const handleSelectEvent = useCallback(
@@ -195,29 +286,25 @@ export function Dashboard() {
       selectEvent(eventId);
       setFocusedBusId(null);
     },
-    [selectEvent]
+    [selectEvent],
   );
 
   const handleMapSelectEvent = useCallback(
     (event: UrbanEvent) => handleSelectEvent(event.id),
-    [handleSelectEvent]
+    [handleSelectEvent],
   );
 
   const handleVerifyEvent = useCallback(
     (eventId: string) => verifyEvent(eventId),
-    [verifyEvent]
+    [verifyEvent],
   );
 
   const handleCreateMaintenanceAlert = useCallback(
     (eventId: string) => createMaintenanceAlert(eventId),
-    [createMaintenanceAlert]
+    [createMaintenanceAlert],
   );
 
-  const handleToggleDemo = useCallback(() => {
-    setDemoMode(prev => !prev);
-  }, []);
-
-  const handleToggleSimulation = useCallback(() => {
+  const handleTogglePause = useCallback(() => {
     setAiPaused(prev => !prev);
   }, []);
 
@@ -244,7 +331,7 @@ export function Dashboard() {
       <Header
         gpsPosition={activeBus?.position || gpsPosition || null}
         gpsStatus={gpsStatus}
-        cameraStatus={cameraActive ? 'CONNECTED' : 'DISCONNECTED'}
+        cameraStatus={cameraActive && cameraVideoReady ? 'CONNECTED' : cameraActive ? 'CONNECTING' : 'DISCONNECTED'}
         isDemoGPS={isDemoGPS}
       />
 
@@ -271,21 +358,34 @@ export function Dashboard() {
             {/* Webcam */}
             <div className="space-y-3">
               <WebcamPanel
-                stream={stream}
+                detectionMode={detectionMode}
                 isActive={cameraActive}
+                isLoading={cameraLoading}
+                videoReady={cameraVideoReady}
                 error={cameraError}
-                detections={simulation.detections}
-                fps={simulation.fps}
-                isSimulationRunning={simulateEnabled}
-                onToggleSimulation={handleToggleSimulation}
+                detections={activeDetections}
+                stats={realDetection.stats}
+                simFps={simulation.fps}
+                simRunning={simActive}
+                aiRunning={detectionMode !== 'off' && !aiPaused}
+                modelState={realDetection.modelState}
+                modelError={realDetection.modelError}
+                modelBackend={realDetection.backend}
+                potholeAvailable={realDetection.potholeAvailable}
+                threshold={threshold}
+                onThresholdChange={setThreshold}
+                onToggleSimulation={handleTogglePause}
+                onStartCamera={() => { startCamera(); }}
                 videoRef={videoRef}
               />
 
               <CameraStatus
                 isActive={cameraActive}
                 isLoading={cameraLoading}
+                videoReady={cameraVideoReady}
                 error={cameraError}
                 facingMode={facingMode}
+                deviceLabel={deviceLabel}
                 onStart={() => { startCamera(); }}
                 onStop={stopCamera}
                 onSwitch={() => { switchCamera(); }}
@@ -352,41 +452,76 @@ export function Dashboard() {
               <SystemStatusPanel status={liveSystemStatus} />
             </div>
 
-            {/* Demo Controls */}
+            {/* AI Mode Controls */}
             <div className="bg-navy-800/50 border border-navy-600 rounded-lg p-4">
               <div className="flex items-center justify-between mb-3">
-                <span className="font-medium text-white">DEMO CONTROLS</span>
+                <span className="font-medium text-white">AI MODE</span>
                 <span
                   className={`text-xs font-mono px-2 py-0.5 rounded border ${
-                    demoMode
-                      ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                      : 'bg-rose-500/20 text-rose-400 border-rose-500/30'
+                    detectionMode === 'real'
+                      ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'
+                      : detectionMode === 'demo'
+                        ? 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+                        : 'bg-navy-700 text-navy-400 border-navy-600'
                   }`}
                 >
-                  {demoMode ? 'SIMULATION ACTIVE' : 'MANUAL'}
+                  {detectionMode === 'real' ? 'LIVE AI' : detectionMode === 'demo' ? 'DEMO AI' : 'AI OFF'}
                 </span>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={handleToggleDemo}
-                  className={`flex-1 min-w-[120px] px-3 py-2 rounded text-sm font-medium transition-colors ${
-                    demoMode
-                      ? 'bg-amber-500/20 border border-amber-500/30 text-amber-400 hover:bg-amber-500/30'
-                      : 'bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/30'
-                  }`}
-                >
-                  {demoMode ? 'STOP SIMULATION' : 'START SIMULATION'}
-                </button>
-                <button
-                  onClick={() => clearEvents()}
-                  className="flex-1 min-w-[120px] px-3 py-2 rounded text-sm font-medium bg-navy-700 border border-navy-600 text-navy-300 hover:bg-navy-600 transition-colors"
-                >
-                  CLEAR EVENTS
-                </button>
+
+              <div className="flex gap-1 p-1 bg-navy-900 rounded border border-navy-600">
+                {(['off', 'demo', 'real'] as const).map(mode => (
+                  <button
+                    key={mode}
+                    onClick={() => handleSetDetectionMode(mode)}
+                    className={`flex-1 py-2 px-2 rounded text-xs font-mono font-medium transition-colors ${
+                      detectionMode === mode
+                        ? mode === 'real'
+                          ? 'bg-cyan-500/20 border border-cyan-500/30 text-cyan-300'
+                          : mode === 'demo'
+                            ? 'bg-amber-500/20 border border-amber-500/30 text-amber-300'
+                            : 'bg-navy-700 border border-navy-600 text-navy-300'
+                        : 'border border-transparent text-navy-400 hover:text-navy-300'
+                    }`}
+                  >
+                    {mode === 'off' ? 'OFF' : mode === 'demo' ? 'DEMO AI' : 'LIVE AI'}
+                  </button>
+                ))}
               </div>
+
+              {detectionMode === 'real' && realDetection.potholeAvailable && (
+                <p className="mt-2 text-[11px] text-rose-400/80 font-mono">
+                  POTHOLE MODEL LOADED — sustained potholes will be flagged as events
+                </p>
+              )}
+
+              {detectionMode !== 'off' && (
+                <div className="mt-3 flex gap-2">
+                  <button
+                    onClick={handleTogglePause}
+                    className={`flex-1 px-3 py-2 rounded text-sm font-medium transition-colors ${
+                      aiPaused
+                        ? 'bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/30'
+                        : 'bg-amber-500/20 border border-amber-500/30 text-amber-400 hover:bg-amber-500/30'
+                    }`}
+                  >
+                    {aiPaused ? 'RESUME AI' : 'PAUSE AI'}
+                  </button>
+                  <button
+                    onClick={() => { setDetectionsToday(0); clearEvents(); }}
+                    className="flex-1 px-3 py-2 rounded text-sm font-medium bg-navy-700 border border-navy-600 text-navy-300 hover:bg-navy-600 transition-colors"
+                  >
+                    CLEAR ALL
+                  </button>
+                </div>
+              )}
+
               <p className="mt-3 text-xs text-navy-400">
-                Demo mode drives the simulated AI detection and event pipeline. Real webcam and GPS
-                remain independent.
+                {detectionMode === 'off'
+                  ? 'Select DEMO AI for simulated detections, or LIVE AI for real camera-based ONNX inference.'
+                  : detectionMode === 'demo'
+                    ? 'Demo mode uses the frontend detection simulation. Real webcam and GPS remain independent.'
+                    : 'Real AI runs YOLOv8n locally in the browser via ONNX Runtime Web (WASM/WebGPU).'}
               </p>
             </div>
           </div>

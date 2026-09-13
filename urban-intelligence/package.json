@@ -13,6 +13,7 @@
     "@types/leaflet": "^1.9.22",
     "leaflet": "^1.9.4",
     "lucide-react": "^1.45.0",
+    "onnxruntime-web": "^1.29.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-leaflet": "^5.0.0"
@@ -29,5 +30,9 @@
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.2",
     "vite": "^8.3.0"
+  },
+  "allowScripts": {
+    "onnxruntime-node@1.29.0": true,
+    "protobufjs@7.6.6": true
   }
 }

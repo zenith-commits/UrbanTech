@@ -39,11 +39,27 @@ export type DetectionClass =
 
 export interface Detection {
   id: string;
-  className: DetectionClass;
+  className: string;
   confidence: number;
   bbox: BoundingBox;
   trackingId: number;
   timestamp: number;
+}
+
+export type DetectionMode = 'off' | 'demo' | 'real';
+
+export type ModelLoadState = 'idle' | 'loading' | 'ready' | 'error';
+
+export type ModelBackend = 'webgpu' | 'wasm';
+
+export interface InferenceStats {
+  fps: number;
+  lastInferenceMs: number;
+  lastInferenceAt: number;
+  framesProcessed: number;
+  rawCandidates: number;
+  thresholdPassed: number;
+  finalDetections: number;
 }
 
 export type EventSeverity = 'low' | 'medium' | 'high' | 'critical';
